@@ -11,6 +11,7 @@
   const messageBox = document.querySelector('#messageBox');
   const QUITMESSAGE = "$q$u$i$t!!^^";
   const TIMEOUTMSG = "$T$I$M$E$O$U$T!!^^";
+  const STARTMSG = "$S$T$A$R$T!!^^";
   let ws;
   let isStarted = false;
   const buttonTextArr = ["S T A R T", "Q U I T"];
@@ -34,6 +35,11 @@
     }
   }
 
+  function close_websocket(){
+    ws.onerror = ws.onopen = ws.onclose = null;
+    ws.close();
+  }
+
   function send_quit_req(){
     ws.send(QUITMESSAGE);
   }
@@ -44,8 +50,7 @@
     // 종료상태 보여줌
     showMessage("  Chat has ended.");
     //WebSocket 종료
-    ws.onerror = ws.onopen = ws.onclose = null;
-    ws.close();
+    close_websocket();
   }
 
   function start_chat(){
@@ -56,6 +61,17 @@
     showMessage("  Connecting WebSocket...");
     // 채팅 시작
     main();
+  }
+
+  function time_out_handler(){
+    switch_state();
+    showMessage("  TIME OUT. Try again.");
+    close_websocket();
+  }
+
+  function start_handler(){
+    clearMessage();
+    showMessage("  Connection established. Have a nice chat!");
   }
 
 
@@ -74,6 +90,7 @@
     sendBtn.onclick();
   }
 
+  // message box 관리
 
   function clearMessage(){
     messages.textContent = '';
@@ -88,11 +105,14 @@
   }
 
   function quit_ask_handler(message){
+    //alert(message);
     // 상대가 종료를 요청한 경우
     if (message == QUITMESSAGE){
       end_chat();
     }
-    // 하나 더 뭐였지? 아 오래걸려서 취소된경우
+    else if (message = STARTMSG){
+      start_handler();
+    }
     else if (message == TIMEOUTMSG){
       time_out_handler();
     }
@@ -100,10 +120,6 @@
       showMessage(`  낯선상대 : ${message}`);
     }
   }
-
-  // function getID(){
-  //     NAME = window.prompt("sometext","Type your name");
-  //   }
 
   // main function
   function main() {
@@ -123,9 +139,6 @@
         
         clearMessage();
         showMessage('  Now Loading...');
-        // getID();
-        // showMessage(`  WelCome!`);
-        // showMessage('  Type /s or /start to start random chat.');
       }
       ws.onmessage = ({ data }) => quit_ask_handler(data);
       ws.onclose = function() {
@@ -141,5 +154,5 @@
 
   //execution
   showMessage('  Welcome! Press START button to start random chat.');
-  //main();
+
 </script>
