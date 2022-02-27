@@ -14,14 +14,16 @@ use std::{
     
 };
 
-use futures_channel::mpsc::{unbounded, UnboundedSender}; //, UnboundedReceiver};
-use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
+use futures_channel::mpsc::{unbounded, UnboundedSender, UnboundedReceiver};
+use futures_util::{future, pin_mut, stream::{TryStreamExt, SplitStream, SplitSink}, StreamExt};
 use tokio;
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
-
+use tokio_tungstenite::{WebSocketStream};
 
 type Tx = UnboundedSender<Message>;
+type Rx = UnboundedReceiver<Message>;
+type WS = WebSocketStream<TcpStream>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 type PeerVecMap = Arc<Mutex<HashMap<SocketAddr, SocketAddr>>>;
 type ActiveClinetDeque = Arc<Mutex<VecDeque<SocketAddr>>>;
@@ -41,50 +43,32 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
         Ok(ws_stream) => ws_stream,
         Err(_) => return,
     };
-        // .expect("Error during the websocket handshake occurred");
+
+    // 성공 로그
     println!("WebSocket connection established: {}", addr);
+
+    // 스트림 분리
     let (outgoing, incoming) = ws_stream.split();
-    // Insert the write part of this peer to the peer map.
+
+    //sender
     let (tx, rx) = unbounded();
 
-    // 그 다음에 여기서 에러남
+    // map에 나 넣기
     peer_map.lock().unwrap().insert(addr, tx.clone());
-    //let my_mutex = IsInMutex::new(Mutex::new(false));
 
+    // active에 나 추가
     active_client_deque.lock().unwrap().push_back(addr);
-    // let mut cnt = 0;
-    let peer_addr: SocketAddr;
+
+    //let peer_addr: SocketAddr;
     let mut success = false;
     
     // loading msg 띄워주기
     for cnt in 1..=101{
+
         // 남이 나를 고른 경우
-        if peer_vec_map.lock().unwrap().contains_key(&addr) {
-            //success = true;            
+        if peer_vec_map.lock().unwrap().contains_key(&addr) {        
             
-            // 받는거 처리
-            let peer_addr = peer_vec_map.lock().unwrap().get(&addr).unwrap().clone();
-            // 강제종료시 여기서 일단 에러가 남
-            match peer_map.lock().unwrap().get(&peer_addr){
-                Some(_tx) =>  _tx.unbounded_send(Message::Text(STARTMSG.to_string())).unwrap(),
-                None => return,
-            }
-            let send_to_peer = incoming.try_for_each(|msg| {
-                println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
-                    // send msg
-                // 강제종료시 여기서 일단 에러가 남
-                match peer_map.lock().unwrap().get(&peer_addr){
-                    Some(_tx) =>  _tx.unbounded_send(msg.clone()).unwrap(),
-                    None => return future::ok(()),
-                }
-                //peer_map.lock().unwrap().get(&peer_addr).unwrap().unbounded_send(msg.clone()).unwrap();            
-                future::ok(())
-            });
-            let receive_from_peer = rx.map(Ok).forward(outgoing);
-            pin_mut!(send_to_peer, receive_from_peer);
-            future::select(send_to_peer, receive_from_peer).await;
-            // 마무리
-            peer_vec_map.lock().unwrap().remove(&peer_addr);
+            handle_chat(peer_vec_map.clone(), peer_map.clone(), addr, rx, incoming, outgoing).await;
             break;
         }
 
@@ -92,9 +76,7 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
         if active_client_deque.lock().unwrap().len() <= 1 {
             tokio::time::sleep(Duration::from_millis(SLEEPTIME)).await;
             if cnt == 101{
-                tx.unbounded_send(Message::Text(TIMEOUTMSG.to_string())).unwrap();
-                rx.map(Ok).forward(outgoing).await.unwrap();
-                println!("Connection Failed");
+                handle_timeout(tx, rx, outgoing).await;
                 break;
             }
         }
@@ -116,58 +98,67 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
             if !success {
                 tokio::time::sleep(Duration::from_millis(SLEEPTIME)).await; 
                 if cnt == 101{
-                    tx.unbounded_send(Message::Text(TIMEOUTMSG.to_string())).unwrap();
-                    rx.map(Ok).forward(outgoing).await.unwrap();
-                    println!("Connection Failed");
+                    handle_timeout(tx, rx, outgoing).await;
                     break;
                 }
 
                 continue;}
                 
-            peer_addr = *peer_vec_map.lock().unwrap().get(&addr).unwrap();
-            // 강제종료시 여기서 일단 에러가 남
-            match peer_map.lock().unwrap().get(&peer_addr){
-                Some(_tx) =>  _tx.unbounded_send(Message::Text(STARTMSG.to_string())).unwrap(),
-                None => return,
-            }
-            //peer_map.lock().unwrap().get(&peer_addr).unwrap().unbounded_send(Message::Text(STARTMSG.to_string())).unwrap(); 
-            
-            let send_to_peer = incoming.try_for_each(|msg| {
-                println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
-                    // send msg
-                // 강제종료시 여기서 일단 에러가 남
-                match peer_map.lock().unwrap().get(&peer_addr){
-                    Some(_tx) =>  _tx.unbounded_send(msg.clone()).unwrap(),
-                    None => return future::ok(()),
-                }
-                //peer_map.lock().unwrap().get(&peer_addr).unwrap().unbounded_send(msg.clone()).unwrap();            
-                future::ok(())
-            });
-            let receive_from_peer = rx.map(Ok).forward(outgoing);
-            pin_mut!(send_to_peer, receive_from_peer);
-            future::select(send_to_peer, receive_from_peer).await;
-            // 마무리
-            peer_vec_map.lock().unwrap().remove(&peer_addr);
+            handle_chat(peer_vec_map.clone(), peer_map.clone(), addr, rx, incoming, outgoing).await;
             break;
                 
         }
 
         
     }
-    // if !success {
-
-        
-    //     tx.unbounded_send(Message::Text(TIMEOUTMSG.to_string())).unwrap();
-    //     rx.map(Ok).forward(outgoing);
-    //     println!("Connection Failed");
-    //     //return;
-    // }
 
     // 넣어둔거 제거
     peer_map.lock().unwrap().remove(&addr);
     
 }
 
+fn send_start_msg(peer_addr: SocketAddr, peer_map: PeerMap){
+
+    match peer_map.lock().unwrap().get(&peer_addr){
+        Some(_tx) =>  _tx.unbounded_send(Message::Text(STARTMSG.to_string())).unwrap(),
+        None => return,
+    }
+
+}
+
+async fn handle_timeout(tx: Tx, rx: Rx, outgoing: SplitSink<WS, Message>){
+    tx.unbounded_send(Message::Text(TIMEOUTMSG.to_string())).unwrap();
+    rx.map(Ok).forward(outgoing).await.unwrap();
+    println!("Connection Failed");
+}
+
+async fn handle_chat(peer_vec_map: PeerVecMap, peer_map: PeerMap, addr: SocketAddr, rx: Rx,
+     incoming: SplitStream<WS>, outgoing: SplitSink<WS, Message>){
+    // peer addr 가져오기
+    let peer_addr = peer_vec_map.lock().unwrap().get(&addr).unwrap().clone();
+    // start msg 전송
+    send_start_msg(peer_addr, peer_map.clone());
+    
+    let send_to_peer = incoming.try_for_each(|msg| {
+        println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
+        // send msg
+        // if msg.to_text().unwrap() == STARTMSG {
+        //     return future::ok(());
+        // }
+
+        match peer_map.lock().unwrap().get(&peer_addr){
+            Some(_tx) =>  _tx.unbounded_send(msg.clone()).unwrap(),
+            None => return future::ok(()),
+        }         
+        future::ok(())
+    });
+    let receive_from_peer = rx.map(Ok).forward(outgoing);
+    pin_mut!(send_to_peer, receive_from_peer);
+    future::select(send_to_peer, receive_from_peer).await;
+    // 마무리
+    peer_vec_map.lock().unwrap().remove(&peer_addr);
+    ()
+}
 
 #[tokio::main]
 async fn main() -> Result<(), IoError> {
