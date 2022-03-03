@@ -14,6 +14,10 @@ use std::{
     
 };
 
+// logger
+// use log::{info, warn, error};
+//use env_logger::Env;
+
 use futures_channel::mpsc::{unbounded, UnboundedSender, UnboundedReceiver};
 use futures_util::{future, pin_mut, stream::{TryStreamExt, SplitStream, SplitSink}, StreamExt};
 use tokio;
@@ -36,12 +40,20 @@ const SLEEPTIME: u64 = 100;
 
 async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_client_deque: ActiveClinetDeque, raw_stream: TcpStream, addr: SocketAddr){
     
+    // let env = Env::default()
+    //                 .filter_or("LOG_LEVEL", "trace")
+    //                 .write_style_or("LOG_STYLE", "always");
+
+    // env_logger::init_from_env(env);
+
     println!("Incoming TCP connection from: {}", addr);
 
     // 문제 생겨도 panic하지 않고 죽도록 그냥 리턴함.
     let ws_stream = match tokio_tungstenite::accept_async(raw_stream).await{
         Ok(ws_stream) => ws_stream,
-        Err(_) => return,
+        Err(_) => {
+            println!("WebSocket connection failed");
+            return},
     };
 
     // 성공 로그
@@ -114,6 +126,7 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
 
     // 넣어둔거 제거
     peer_map.lock().unwrap().remove(&addr);
+    println!("TCP connection closed: {}", addr);
     
 }
 
@@ -140,11 +153,7 @@ async fn handle_chat(peer_vec_map: PeerVecMap, peer_map: PeerMap, addr: SocketAd
     send_start_msg(peer_addr, peer_map.clone());
     
     let send_to_peer = incoming.try_for_each(|msg| {
-        println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
-        // send msg
-        // if msg.to_text().unwrap() == STARTMSG {
-        //     return future::ok(());
-        // }
+        //println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
 
         match peer_map.lock().unwrap().get(&peer_addr){
             Some(_tx) =>  _tx.unbounded_send(msg.clone()).unwrap(),
@@ -163,7 +172,7 @@ async fn handle_chat(peer_vec_map: PeerVecMap, peer_map: PeerMap, addr: SocketAd
 #[tokio::main]
 async fn main() -> Result<(), IoError> {
     // address를 cli로 받고 없으면 로컬 12345
-    let addr = env::args().nth(1).unwrap_or_else(|| "127.0.0.1:12345".to_string());
+    let addr = env::args().nth(1).unwrap_or_else(|| "0.0.0.0:8080".to_string());
 
     let state = PeerMap::new(Mutex::new(HashMap::new()));
     let peer_vec_map = PeerVecMap::new(Mutex::new(HashMap::new()));
