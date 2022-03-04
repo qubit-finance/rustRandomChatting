@@ -9,6 +9,7 @@ edition = "2021"
 tokio-tungstenite = "0.16"
 futures-util = "*"
 futures-channel = "*"
+futures = "*"
 tokio = {version = "1", features = ["full"]}
 tungstenite = "*"
 chrono = "0.4.19"

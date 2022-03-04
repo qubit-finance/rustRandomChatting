@@ -22,7 +22,6 @@ use tokio;
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
 use tokio_tungstenite::{WebSocketStream};
-
 type Tx = UnboundedSender<Message>;
 type Rx = UnboundedReceiver<Message>;
 type WS = WebSocketStream<TcpStream>;
@@ -34,7 +33,7 @@ type ActiveClinetDeque = Arc<Mutex<VecDeque<SocketAddr>>>;
 //global constants
 const TIMEOUTMSG: &str = "$T$I$M$E$O$U$T!!^^";
 const STARTMSG: &str = "$S$T$A$R$T!!^^";
-const SLEEPTIME: u64 = 100;
+const SLEEPTIME: u64 = 1;
 
 async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_client_deque: ActiveClinetDeque, raw_stream: TcpStream, addr: SocketAddr){
 
@@ -80,6 +79,8 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
         if active_client_deque.lock().unwrap().len() <= 1 {
             tokio::time::sleep(Duration::from_millis(SLEEPTIME)).await;
             if cnt == 101{
+                println!("{} ## {} Connection Failed 11: TIMEOUT", get_current_time(), addr);
+                // futures::executor::block_on(handle_timeout(tx, rx, outgoing));
                 handle_timeout(tx, rx, outgoing).await;
                 println!("{} ## {} Connection Failed : TIMEOUT", get_current_time(), addr);
                 break;
@@ -103,6 +104,8 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
             if !success {
                 tokio::time::sleep(Duration::from_millis(SLEEPTIME)).await; 
                 if cnt == 101{
+                    println!("{} ## {} Connection Failed 11: TIMEOUT", get_current_time(), addr);
+                    // futures::executor::block_on(handle_timeout(tx, rx, outgoing)); //.await;
                     handle_timeout(tx, rx, outgoing).await;
                     println!("{} ## {} Connection Failed : TIMEOUT", get_current_time(), addr);
                     break;
@@ -141,7 +144,12 @@ fn get_current_time() -> String{
 
 async fn handle_timeout(tx: Tx, rx: Rx, outgoing: SplitSink<WS, Message>){
     tx.unbounded_send(Message::Text(TIMEOUTMSG.to_string())).unwrap();
-    rx.map(Ok).forward(outgoing).await.unwrap();
+    let receive_from_peer = rx.map(Ok).forward(outgoing);
+    let dummy = async{()};
+    pin_mut!(receive_from_peer, dummy);
+    future::select(receive_from_peer, dummy).await;
+    
+    //rx.map(Ok).forward(outgoing).await.unwrap();
     
 }
 
