@@ -1,6 +1,6 @@
 //! You can test this out by running:
 //!
-//!     cargo run --example server 127.0.0.1:12345
+//!     cargo run --example server 
 //! 
 
 
@@ -36,8 +36,6 @@ const STARTMSG: &str = "$S$T$A$R$T!!^^";
 const SLEEPTIME: u64 = 100;
 
 async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_client_deque: ActiveClinetDeque, raw_stream: TcpStream, addr: SocketAddr){
-
-    //println!("{} ## Incoming TCP connection from: {}", get_current_time(), addr);
 
     // 문제 생겨도 panic하지 않고 죽도록 그냥 리턴함.
     let ws_stream = match tokio_tungstenite::accept_async(raw_stream).await{
@@ -123,7 +121,6 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
 
     // 넣어둔거 제거
     peer_map.lock().unwrap().remove(&addr);
-    // println!("{:?}", active_client_deque);
     
     println!("{} ## TCP connection closed: {}", get_current_time(), addr);
     
@@ -175,14 +172,12 @@ async fn handle_chat(peer_vec_map: PeerVecMap, peer_map: PeerMap, addr: SocketAd
     pin_mut!(send_to_peer, receive_from_peer);
     future::select(send_to_peer, receive_from_peer).await;
     // 마무리
-    // peer_vec_map.lock().unwrap().remove(&peer_addr);
-    //println!("{} ## the chat with {} and {} has ended.", get_current_time(), addr, peer_addr);
-    ()
+    peer_vec_map.lock().unwrap().remove(&peer_addr);
 }
 
 #[tokio::main]
 async fn main() -> Result<(), IoError> {
-    // address를 cli로 받고 없으면 로컬 12345
+    // address cli로 받음
     let addr = env::args().nth(1).unwrap_or_else(|| "0.0.0.0:8080".to_string());
 
     let state = PeerMap::new(Mutex::new(HashMap::new()));
