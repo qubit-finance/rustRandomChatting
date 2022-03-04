@@ -11,5 +11,4 @@ futures-util = "*"
 futures-channel = "*"
 tokio = {version = "1", features = ["full"]}
 tungstenite = "*"
-log = "0.4"
-env_logger = "0.9"
+chrono = "0.4.19"

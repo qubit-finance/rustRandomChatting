@@ -14,9 +14,7 @@ use std::{
     
 };
 
-// logger
-// use log::{info, warn, error};
-//use env_logger::Env;
+use chrono::Utc;
 
 use futures_channel::mpsc::{unbounded, UnboundedSender, UnboundedReceiver};
 use futures_util::{future, pin_mut, stream::{TryStreamExt, SplitStream, SplitSink}, StreamExt};
@@ -39,14 +37,8 @@ const STARTMSG: &str = "$S$T$A$R$T!!^^";
 const SLEEPTIME: u64 = 100;
 
 async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_client_deque: ActiveClinetDeque, raw_stream: TcpStream, addr: SocketAddr){
-    
-    // let env = Env::default()
-    //                 .filter_or("LOG_LEVEL", "trace")
-    //                 .write_style_or("LOG_STYLE", "always");
 
-    // env_logger::init_from_env(env);
-
-    println!("Incoming TCP connection from: {}", addr);
+    //println!("{} ## Incoming TCP connection from: {}", get_current_time(), addr);
 
     // 문제 생겨도 panic하지 않고 죽도록 그냥 리턴함.
     let ws_stream = match tokio_tungstenite::accept_async(raw_stream).await{
@@ -57,7 +49,7 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
     };
 
     // 성공 로그
-    println!("WebSocket connection established: {}", addr);
+    println!("{} ## WebSocket connection established: {}", get_current_time(), addr);
 
     // 스트림 분리
     let (outgoing, incoming) = ws_stream.split();
@@ -89,6 +81,7 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
             tokio::time::sleep(Duration::from_millis(SLEEPTIME)).await;
             if cnt == 101{
                 handle_timeout(tx, rx, outgoing).await;
+                println!("{} ## {} Connection Failed : TIMEOUT", get_current_time(), addr);
                 break;
             }
         }
@@ -111,6 +104,7 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
                 tokio::time::sleep(Duration::from_millis(SLEEPTIME)).await; 
                 if cnt == 101{
                     handle_timeout(tx, rx, outgoing).await;
+                    println!("{} ## {} Connection Failed : TIMEOUT", get_current_time(), addr);
                     break;
                 }
 
@@ -126,7 +120,7 @@ async fn handle_connection(peer_map: PeerMap, peer_vec_map: PeerVecMap, active_c
 
     // 넣어둔거 제거
     peer_map.lock().unwrap().remove(&addr);
-    println!("TCP connection closed: {}", addr);
+    println!("{} ## TCP connection closed: {}", get_current_time(), addr);
     
 }
 
@@ -139,16 +133,24 @@ fn send_start_msg(peer_addr: SocketAddr, peer_map: PeerMap){
 
 }
 
+fn get_current_time() -> String{
+    let now = Utc::now();
+    let x: String = format!("{}", now);
+    return x;
+}
+
 async fn handle_timeout(tx: Tx, rx: Rx, outgoing: SplitSink<WS, Message>){
     tx.unbounded_send(Message::Text(TIMEOUTMSG.to_string())).unwrap();
     rx.map(Ok).forward(outgoing).await.unwrap();
-    println!("Connection Failed");
+    
 }
 
 async fn handle_chat(peer_vec_map: PeerVecMap, peer_map: PeerMap, addr: SocketAddr, rx: Rx,
      incoming: SplitStream<WS>, outgoing: SplitSink<WS, Message>){
     // peer addr 가져오기
     let peer_addr = peer_vec_map.lock().unwrap().get(&addr).unwrap().clone();
+    // 시작 로그
+    println!("{} ## {} started new chat with {}", get_current_time(), addr, peer_addr);
     // start msg 전송
     send_start_msg(peer_addr, peer_map.clone());
     
@@ -166,6 +168,7 @@ async fn handle_chat(peer_vec_map: PeerVecMap, peer_map: PeerMap, addr: SocketAd
     future::select(send_to_peer, receive_from_peer).await;
     // 마무리
     peer_vec_map.lock().unwrap().remove(&peer_addr);
+    //println!("{} ## the chat with {} and {} has ended.", get_current_time(), addr, peer_addr);
     ()
 }
 
