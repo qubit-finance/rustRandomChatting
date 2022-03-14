@@ -1,0 +1,7 @@
+/home/minjun/rust/np_rust/project/random_chat/target/debug/deps/random_chat-5d7102a8f5f70e26.rmeta: src/lib.rs
+
+/home/minjun/rust/np_rust/project/random_chat/target/debug/deps/librandom_chat-5d7102a8f5f70e26.rlib: src/lib.rs
+
+/home/minjun/rust/np_rust/project/random_chat/target/debug/deps/random_chat-5d7102a8f5f70e26.d: src/lib.rs
+
+src/lib.rs:

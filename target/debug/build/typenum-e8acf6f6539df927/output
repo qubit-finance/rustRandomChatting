@@ -1,0 +1,2 @@
+cargo:rustc-env=TYPENUM_BUILD_CONSTS=/home/minjun/rust/np_rust/project/random_chat/target/debug/build/typenum-e8acf6f6539df927/out/consts.rs
+cargo:rustc-env=TYPENUM_BUILD_OP=/home/minjun/rust/np_rust/project/random_chat/target/debug/build/typenum-e8acf6f6539df927/out/op.rs
